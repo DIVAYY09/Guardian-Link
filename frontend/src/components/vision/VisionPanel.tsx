@@ -30,62 +30,102 @@ export function VisionPanel({ onResults, setIsConnected, setEmergencyTriggered }
             }
         }
         setupCamera();
-    }, []);
-
-    // WebSocket Logic
-    useEffect(() => {
-        const ws = new WebSocket('ws://localhost:8005/ws/stream');
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-            console.log('Connected to Vision Server');
-            setIsConnected(true);
-            setCaption("System Online. Scanning sector...");
-        };
-
-        ws.onclose = () => {
-            console.log('Disconnected from Vision Server');
-            setIsConnected(false);
-            setCaption("CONNECTION LOST - RECONNECTING...");
-        };
-
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            onResults(data);
-
-            if (data.status === "fallback") {
-                setCaption(`⚠️ SYSTEM ALERT: ${data.caption}`);
-            } else {
-                setCaption(`ANALYSIS: ${data.caption ? data.caption.toUpperCase() : "SCANNING..."}`);
-            }
-
-            if (data.status === "alert") {
-                setEmergencyTriggered(true);
-            }
-        };
 
         return () => {
-            ws.close();
+            // Cleanup camera tracks
+            if (videoRef.current && videoRef.current.srcObject) {
+                const stream = videoRef.current.srcObject as MediaStream;
+                stream.getTracks().forEach(track => track.stop());
+            }
         };
-    }, [setIsConnected, onResults, setEmergencyTriggered]);
+    }, []);
 
-    // Frame Transmission Loop
+    // WebSocket Logic with Robust Cleanup
     useEffect(() => {
-        const interval = setInterval(() => {
+        let isMounted = true;
+        let frameInterval: ReturnType<typeof setInterval>;
+
+        const connectWebSocket = () => {
+            if (!isMounted) return;
+
+            // Use 127.0.0.1 for consistency
+            const ws = new WebSocket('ws://127.0.0.1:8005/ws/stream');
+
+            ws.onopen = () => {
+                if (!isMounted) {
+                    ws.close();
+                    return;
+                }
+                console.log('VisionPanel: Connected to Vision Server');
+                setIsConnected(true);
+                setCaption("System Online. Scanning sector...");
+            };
+
+            ws.onclose = () => {
+                if (!isMounted) return;
+                console.log('VisionPanel: Disconnected');
+                setIsConnected(false);
+                setCaption("CONNECTION LOST - RECONNECTING...");
+
+                // Simple reconnect logic if needed, but safe due to cleanup
+                setTimeout(() => {
+                    if (isMounted && wsRef.current?.readyState === WebSocket.CLOSED) {
+                        connectWebSocket();
+                    }
+                }, 3000);
+            };
+
+            ws.onmessage = (event) => {
+                if (!isMounted) return;
+                try {
+                    const data = JSON.parse(event.data);
+                    // Ignore pong
+                    if (data.type === 'pong') return;
+
+                    onResults(data);
+
+                    if (data.status === "fallback") {
+                        setCaption(`⚠️ SYSTEM ALERT: ${data.caption}`);
+                    } else {
+                        setCaption(`ANALYSIS: ${data.caption ? data.caption.toUpperCase() : "SCANNING..."}`);
+                    }
+
+                    if (data.status === "alert") {
+                        setEmergencyTriggered(true);
+                    }
+                } catch (e) {
+                    // ignore parse errors
+                }
+            };
+
+            wsRef.current = ws;
+        };
+
+        connectWebSocket();
+
+        // Frame Transmission Loop
+        frameInterval = setInterval(() => {
             if (wsRef.current?.readyState === WebSocket.OPEN && videoRef.current && canvasRef.current) {
                 const ctx = canvasRef.current.getContext('2d');
                 if (ctx) {
                     ctx.drawImage(videoRef.current, 0, 0, 640, 480);
                     const base64 = canvasRef.current.toDataURL('image/jpeg', 0.8);
-                    // Send plain base64 without prefix if backend expects it, or full data URL
-                    // Backend code seemed to handle "split(',')", so sending full data URL is safe.
                     wsRef.current.send(base64);
                 }
             }
-        }, 200); // 5 FPS (200ms interval) to allow Azure breathing room
+        }, 200);
 
-        return () => clearInterval(interval);
-    }, []);
+        // CRITICAL CLEANUP
+        return () => {
+            isMounted = false;
+            clearInterval(frameInterval);
+            if (wsRef.current) {
+                // Prevent onclose from triggering state updates after unmount
+                wsRef.current.onclose = null;
+                wsRef.current.close();
+            }
+        };
+    }, []); // Removed dependencies to prevent re-running on state changes
 
     return (
         <div className="flex-1 min-h-[400px] flex flex-col relative bg-black/40 border border-gray-800 rounded-lg overflow-hidden backdrop-blur-sm">
@@ -102,7 +142,7 @@ export function VisionPanel({ onResults, setIsConnected, setEmergencyTriggered }
 
                 {/* Scanning Overlay */}
                 <div className="absolute inset-0 pointer-events-none">
-                    <div className="w-full h-1 bg-alert-red/50 shadow-[0_0_15px_rgba(255,59,48,0.8)] animate-scan absolute top-0"></div>
+                    <div className="w-full h-1 bg-red-500/50 shadow-[0_0_15px_rgba(255,59,48,0.8)] animate-scan absolute top-0"></div>
                     <div className="absolute inset-0 border-2 border-white/10 m-4 rounded-lg"></div>
 
                     {/* Target Reticle */}
@@ -114,7 +154,7 @@ export function VisionPanel({ onResults, setIsConnected, setEmergencyTriggered }
 
             {/* Ticker Footer */}
             <div className="absolute bottom-0 left-0 right-0 h-10 bg-black/80 border-t border-gray-800 flex items-center px-4 overflow-hidden">
-                <AlertCircle className="w-4 h-4 text-alert-red mr-3 animate-pulse" />
+                <AlertCircle className="w-4 h-4 text-red-500 mr-3 animate-pulse" />
                 <div className="overflow-hidden whitespace-nowrap w-full">
                     <div className="inline-block animate-marquee pl-4">
                         <span className="font-mono text-sm tracking-widest text-gray-300">
