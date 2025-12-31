@@ -78,15 +78,13 @@ def run_backend():
         venv_python = sys.executable
 
     # Run uvicorn as a module from the root directory
+    # FIX: Removed --reload-exclude flags because --reload is not active.
     cmd = [
         venv_python, "-m", "uvicorn", "backend.main:app", 
         "--host", "0.0.0.0",
         "--port", "8005",
         "--workers", "1",
-        "--loop", "asyncio",
-        "--reload-exclude", "*.wav",
-        "--reload-exclude", "backend/static/*",
-        "--reload-exclude", "guardianlink_runtime/*"
+        "--loop", "asyncio"
     ]
     
     try:

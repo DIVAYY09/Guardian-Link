@@ -2,7 +2,19 @@ import os
 import logging
 import asyncio
 from typing import Dict, Any, List, Optional
+from pathlib import Path      # <--- Added
 from dotenv import load_dotenv
+
+# --- CRITICAL FIX: FORCE LOAD .ENV FROM ROOT ---
+# Calculate path to the root folder (3 levels up from services/vision_service.py)
+current_dir = Path(__file__).resolve().parent
+root_dir = current_dir.parent.parent
+env_path = root_dir / '.env'
+
+print(f"[DEBUG] VisionService loading .env from: {env_path}")
+load_dotenv(dotenv_path=env_path, override=True)
+# -----------------------------------------------
+
 from azure.ai.vision.imageanalysis.aio import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
 from azure.core.credentials import AzureKeyCredential
@@ -10,12 +22,11 @@ from azure.cognitiveservices.vision.customvision.prediction import CustomVisionP
 from msrest.authentication import ApiKeyCredentials
 from azure.core.exceptions import HttpResponseError
 
-# Load environment variables
-load_dotenv()
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
 
 class AzureCustomVisionClient:
     """
@@ -23,29 +34,35 @@ class AzureCustomVisionClient:
     Retrieves project configuration from environment variables.
     """
     def __init__(self):
+        # Force reload env to be safe
+        from dotenv import load_dotenv
+        load_dotenv(override=True)
+
         self.endpoint = os.getenv("AZURE_CUSTOM_VISION_ENDPOINT")
-        print(f"DEBUG CHECK: Custom Vision Key found? {bool(os.getenv('AZURE_CUSTOM_VISION_KEY'))}")
         self.key = os.getenv("AZURE_CUSTOM_VISION_KEY")
         self.project_id = os.getenv("AZURE_CUSTOM_VISION_PROJECT_ID")
         self.model_name = os.getenv("AZURE_CUSTOM_VISION_ITERATION_NAME")
+
+        # Debug print
+        print(f"DEBUG: Endpoint: {self.endpoint}")
+        print(f"DEBUG: Project ID: {self.project_id}")
 
         if not all([self.endpoint, self.key, self.project_id, self.model_name]):
             logger.warning("Azure Custom Vision credentials/config missing. Feature will be disabled.")
             self.client = None
         else:
             try:
+                # FIX: Ensure endpoint doesn't have trailing slash for the SDK
+                endpoint_clean = self.endpoint.rstrip('/')
+                
                 credentials = ApiKeyCredentials(in_headers={"Prediction-Key": self.key})
-                self.client = CustomVisionPredictionClient(endpoint=self.endpoint, credentials=credentials)
+                self.client = CustomVisionPredictionClient(endpoint=endpoint_clean, credentials=credentials)
                 logger.info("AzureCustomVisionClient initialized successfully.")
             except Exception as e:
                 logger.error(f"Failed to initialize AzureCustomVisionClient: {e}")
                 self.client = None
 
     async def predict_gesture(self, image_bytes: bytes) -> List[Dict[str, Any]]:
-        """
-        Predicts gestures/signs from the image using Custom Vision.
-        Looks for tags like 'HELP', 'FIRE', 'CHOKING'.
-        """
         if not self.client:
             return []
 
