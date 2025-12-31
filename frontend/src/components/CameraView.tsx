@@ -57,36 +57,40 @@ const CameraView: React.FC<CameraViewProps> = ({ onEmergencyTrigger, isSimulatio
         };
     }, []);
 
-    // Initialize WebSocket
+    // Initialize WebSocket with Robust Cleanup
     useEffect(() => {
+        let isMounted = true;
         let heartbeatInterval: ReturnType<typeof setInterval>;
         let frameInterval: ReturnType<typeof setInterval>;
+        let reconnectTimeout: ReturnType<typeof setTimeout>;
 
         const connectWebSocket = () => {
-            // In a real app, use the actual backend URL. For now, 127.0.0.1:8005
-            console.log("WebSocket Attempting Connection to ws://127.0.0.1:8005/ws/stream...");
+            if (!isMounted) return;
+
+            // Use 127.0.0.1 to avoid localhost resolution lag
+            console.log("WebSocket Attempting Connection...");
             const ws = new WebSocket('ws://127.0.0.1:8005/ws/stream');
 
             ws.onopen = () => {
-                console.log('Connected to WebSocket');
-                console.log('WebSocket Connected!'); // User requested validation log
+                if (!isMounted) {
+                    ws.close();
+                    return;
+                }
+                console.log('WebSocket Connected!');
                 setStatus('Connected');
                 setError(null);
             };
 
             ws.onmessage = (event) => {
+                if (!isMounted) return;
                 try {
                     const data = JSON.parse(event.data);
-                    // Handle Pong
-                    if (data.type === 'pong') {
-                        return;
-                    }
+                    if (data.type === 'pong') return;
 
                     if (data.error) {
                         console.error("Backend Error:", data.error);
                     } else {
                         setResult(data);
-                        // Check for emergency trigger from backend or simulation
                         if (data.emergency_triggered || (isSimulationMode && data.gestures?.some((g: any) => g.tag === 'Help' && g.probability > 0.8))) {
                             setIsEmergency(true);
                             onEmergencyTrigger(data);
@@ -98,20 +102,25 @@ const CameraView: React.FC<CameraViewProps> = ({ onEmergencyTrigger, isSimulatio
             };
 
             ws.onclose = () => {
+                if (!isMounted) return;
                 console.log('Disconnected from WebSocket');
                 setStatus('Disconnected');
-                // Reconnect logic 
-                setTimeout(() => {
-                    console.log("Attempting reconnection...");
-                    connectWebSocket();
-                }, 2000); // Wait 2 seconds
+
+                // Only attempt reconnect if we are still mounted
+                reconnectTimeout = setTimeout(() => {
+                    if (isMounted) {
+                        console.log("Attempting reconnection...");
+                        connectWebSocket();
+                    }
+                }, 2000);
             };
 
             ws.onerror = (err) => {
                 console.error('WebSocket error:', err);
-                setStatus('Disconnected');
-                setError('Connection failed');
-                ws.close(); // Force close to trigger onclose and reconnect
+                if (isMounted) {
+                    setStatus('Disconnected');
+                    setError('Connection failed');
+                }
             };
 
             wsRef.current = ws;
@@ -126,39 +135,41 @@ const CameraView: React.FC<CameraViewProps> = ({ onEmergencyTrigger, isSimulatio
             }
         }, 5000);
 
+        // Frame Transmission Interval
         frameInterval = setInterval(() => {
             if (wsRef.current?.readyState === WebSocket.OPEN && videoRef.current && canvasRef.current) {
                 const context = canvasRef.current.getContext('2d');
                 if (context) {
+                    // Draw video to canvas
                     context.drawImage(videoRef.current, 0, 0, 640, 480);
                     // Send frame
-                    const base64Data = canvasRef.current.toDataURL('image/jpeg', 0.6); // Lower quality for speed
+                    const base64Data = canvasRef.current.toDataURL('image/jpeg', 0.6);
                     wsRef.current.send(base64Data);
                 }
             }
         }, 1000);
 
+        // CRITICAL: Cleanup Function
         return () => {
+            isMounted = false;
             clearInterval(heartbeatInterval);
             clearInterval(frameInterval);
-            wsRef.current?.close();
+            clearTimeout(reconnectTimeout);
+
+            if (wsRef.current) {
+                // IMPORTANT: Remove onclose to prevent the "Zombie Reconnect" loop
+                wsRef.current.onclose = null;
+                wsRef.current.close();
+            }
         };
-    }, [isSimulationMode]); // Removed onEmergencyTrigger to prevent reconnection loop
-
-    // Handle Simulation Trigger
-    useEffect(() => {
-        if (isSimulationMode) {
-            // Mock emergency logic if needed locally, but ideally simulation is just a flag passed to backend or handled by specific button press invoking parent 
-        }
     }, [isSimulationMode]);
-
 
     return (
         <div className={clsx(
             "relative w-full aspect-video rounded-3xl overflow-hidden border-4 transition-all duration-500",
             isEmergency ? "border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.6)] animate-pulse" : "border-white/10 shadow-2xl"
         )}>
-            {/* Frosted Glass Overlay Effect for Borders */}
+            {/* Frosted Glass Overlay Effect */}
             <div className="absolute inset-0 pointer-events-none ring-1 ring-white/20 rounded-3xl z-10"></div>
 
             <video
@@ -177,7 +188,7 @@ const CameraView: React.FC<CameraViewProps> = ({ onEmergencyTrigger, isSimulatio
                 </span>
             </div>
 
-            {/* AR Overlay - Crisis Mode */}
+            {/* Emergency Overlay */}
             {isEmergency && (
                 <div className="absolute inset-0 z-30 flex flex-col items-center justify-center pointer-events-none">
                     <div className="bg-red-600/20 backdrop-blur-sm border border-red-500/50 p-6 rounded-2xl animate-bounce">
@@ -190,7 +201,7 @@ const CameraView: React.FC<CameraViewProps> = ({ onEmergencyTrigger, isSimulatio
                 </div>
             )}
 
-            {/* Debug/Info Overlay (Optional, smaller) */}
+            {/* Debug/Info Overlay */}
             {result && !isEmergency && (
                 <div className="absolute bottom-4 left-4 right-4 bg-black/60 backdrop-blur-md p-3 rounded-xl border border-white/10 z-20">
                     <p className="text-xs text-gray-300 font-mono">
