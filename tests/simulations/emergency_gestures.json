@@ -1,0 +1,17 @@
+[
+    {
+        "scenario": "Medical - Heart Attack",
+        "label": "Clutching Chest",
+        "timestamp": "2025-12-22T10:00:00Z"
+    },
+    {
+        "scenario": "Fire - Kitchen",
+        "label": "Waving Arms",
+        "timestamp": "2025-12-22T10:05:00Z"
+    },
+    {
+        "scenario": "Security - Intruder",
+        "label": "Hands Up",
+        "timestamp": "2025-12-22T10:10:00Z"
+    }
+]

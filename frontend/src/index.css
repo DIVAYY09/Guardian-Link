@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme {
+  --color-medical-dark: #0A0A0A;
+  --color-alert-red: #FF3B30;
+  --color-success-green: #34C759;
+
+  --animate-pulse-fast: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-scan: scan 3s linear infinite;
+
+  @keyframes scan {
+    0% {
+      top: 0%
+    }
+
+    100% {
+      top: 100%
+    }
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-medical-dark text-white;
+  }
+}

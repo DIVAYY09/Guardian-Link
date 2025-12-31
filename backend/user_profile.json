@@ -1,0 +1,13 @@
+{
+    "user_id": "guardian_001",
+    "name": "Sarah Connor",
+    "age": 35,
+    "medical_history": "Asthmatic, Severe Peanut Allergy, History of Panic Attacks",
+    "emergency_contact": {
+        "name": "John Connor",
+        "relation": "Son",
+        "phone": "+1-555-0199"
+    },
+    "blood_type": "O-",
+    "primary_physician": "Dr. Silberman"
+}

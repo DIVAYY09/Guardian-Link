@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+azure-cognitiveservices-vision-computervision
+azure-cognitiveservices-speech
+openai
+python-dotenv
+pydantic
+azure-ai-vision-imageanalysis
+azure-cognitiveservices-vision-customvision
+google-genai
+aiofiles
+psutil
+aiohttp
